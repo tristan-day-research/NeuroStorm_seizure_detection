@@ -6,6 +6,13 @@ This project focuses on detecting and classifying seizures from EEG brain signal
 - **Transformer Model** – These tokens are used to train a transformer, similar to those found in natural language processing, but adapted for neurodata.
 - **Classifier** – The transformer's output is passed to a classifier that identifies the type of seizure (if present).
 
+The architecture of LaBraM is shown below, as described in the original paper.  
+
+![Model Architecture](images/labram_fig1.png)  
+![Model Architecture](images/labram_fig2.png)  
+*Figures reproduced from: Jiang, Zhao, and Lu. "Large Brain Model for Learning Generic Representations with Tremendous EEG Data in BCI." arXiv, 2023. [arXiv:QzTpTRVtrP](https://openreview.net/pdf?id=QzTpTRVtrP)*  
+
+
 ## Why "NeuroStorm"?
 Seizures are often described as electrical storms in the brain. NeuroStorm reflects this analogy.
 
