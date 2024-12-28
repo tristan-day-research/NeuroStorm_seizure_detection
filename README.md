@@ -1,13 +1,17 @@
-# NeuroStorm_seizure_detection
-This is a Large Brain Model (LaBraM), with a similar architecture of an LLM (Large Language Model).
+**NeuroStorm** is a Large Brain Model (LaBraM), inspired by the architecture of Large Language Models (LLMs).
+This project focuses on detecting and classifying seizures from EEG brain signal recordings.
 
-NeuroStorm detects what type of seizure, if any, is present in an EEG brain signal recording.
+## How It Works:
+- Tokenizer – NeuroStorm uses a Variational Autoencoder (VAE) to tokenize EEG signals. The VAE processes Fast Fourier Transforms (FFT) of EEG signal patches, generating compact representations of brain activity.
+- Transformer Model – These tokens are used to train a transformer, similar to those found in natural language processing, but adapted for neurodata.
+- Classifier – The transformer's output is passed to a classifier that identifies the type of seizure (if present).
 
-For the tokenizer it uses a Variational Autoencoder based on Fast Fourier Transforms of EEG signal patches. These tokens are used to train a transformer model. The representation from the transformer model is passed to a classifier to detect seizure types.
+## Why "NeuroStorm"?
+Seizures are often described as "electrical storms in the brain." NeuroStorm reflects this analogy and aims to assist neurologists by automatically detecting anomalous neural activity, helping to reduce diagnostic workload.
 
-It's named NeuroStorm because of the metaphor of seizures being electrical storms in the brain.
-
-This work is a replication of the paper LARGE BRAIN MODEL FOR LEARNING GENERIC REPRESENTATIONS WITH TREMENDOUS EEG DATA IN
-BCI (https://openreview.net/pdf?id=QzTpTRVtrP), specifically tailored to detect seizures. 
-
-Credit to Wei-Bang Jiang, Li-Ming Zhao and Bao-Liang Lu at Shanghai Jiao Tong University and Shanghai Emotionhelper Technology Co., Ltd. for developing the original LaBraM.
+## Project Foundation:
+This project replicates and extends the work presented in the paper:
+"LARGE BRAIN MODEL FOR LEARNING GENERIC REPRESENTATIONS WITH TREMENDOUS EEG DATA IN BCI"
+Read the paper here 
+Authors: Wei-Bang Jiang, Li-Ming Zhao, and Bao-Liang Lu at Shanghai Jiao Tong University and Shanghai Emotionhelper Technology Co., Ltd.
+NeuroStorm adapts LaBraM specifically for seizure detection, building on their groundbreaking research in Brain-Computer Interfaces (BCI).
