@@ -1,13 +1,13 @@
 **NeuroStorm** is a Large Brain Model (LaBraM), inspired by the architecture of Large Language Models (LLMs).
-This project focuses on detecting and classifying seizures from EEG brain signal recordings. This project aims to assist neurologists by automating the detection of anomalous neural activity, reducing manual workload, and accelerating diagnosis.
+This project focuses on detecting and classifying seizures from EEG brain signal recordings. This project aims to assist neurologists by automating the detection of anomalous neural activity, therby reducing manual workload and accelerating diagnosis.
 
 ## Why "NeuroStorm"?
 Seizures are often described as electrical storms in the brain. NeuroStorm reflects this analogy.
 
 ## How It Works
-- **Tokenizer** – NeuroStorm uses a **Variational Autoencoder (VAE)** to tokenize EEG signals. The VAE processes **Fast Fourier Transform (FFT)** spectra of EEG signal patches, generating compact representations of brain activity.
-- **Transformer Model** – These tokens are used to train a transformer, similar to those found in natural language processing, but adapted for neurodata.
-- **Classifier** – The transformer's output is passed to a classifier that identifies the type of seizure (if present).
+- **Tokenizer** – NeuroStorm uses a **Variational Autoencoder (VAE)** to tokenize EEG signals. The VAE processes **Fourier Transform spectra** of EEG signal patches, creating compact representations of brain activity.
+- **Transformer Model** – The generated tokens are used to train a **transformer**, modeled after LLMs in natural language processing, but adapted to handle the Fourier spectra of EEG patches.
+- **Classifier** – The transformer's output is passed to a neural network classifier, which identifies the type of seizure, if present.
 
 The architecture is illustrated below, as described in the foundational paper 'Large Brain Model for Learning Generic Representations with Tremendous EEG Data in BCI'.
 
