@@ -1,7 +1,11 @@
 # NeuroStorm_seizure_detection
 This is a Large Brain Model (LaBraM), with a similar architecture of an LLM (Large Language Model).
 
-NeuroStorm detects what type of seizure, if any, is present in an EEG brain signal recording. For the tokenizer it uses a Variational Autoencoder based on Fast Fourier Transforms of EEG signal patches. These tokens are used to train a transformer model. The representation from the transformer model is passed to a classifier to detect seizure types.
+NeuroStorm detects what type of seizure, if any, is present in an EEG brain signal recording.
+
+For the tokenizer it uses a Variational Autoencoder based on Fast Fourier Transforms of EEG signal patches. These tokens are used to train a transformer model. The representation from the transformer model is passed to a classifier to detect seizure types.
+
+It's named NeuroStorm because of the metaphor of seizures being electrical storms in the brain.
 
 This work is a replication of the paper LARGE BRAIN MODEL FOR LEARNING GENERIC REPRESENTATIONS WITH TREMENDOUS EEG DATA IN
 BCI (https://openreview.net/pdf?id=QzTpTRVtrP), specifically tailored to detect seizures. 
