@@ -13,7 +13,7 @@ The architecture of LaBraM is shown below, as described in the original paper.
 
 ![Model Architecture](images/labram_fig1.png)  
 ![Model Architecture](images/labram_fig2.png)  
-*Figures reproduced from: Jiang, Zhao, and Lu. "Large Brain Model for Learning Generic Representations with Tremendous EEG Data in BCI." arXiv, 2023. [arXiv:QzTpTRVtrP](https://openreview.net/pdf?id=QzTpTRVtrP)*  
+*Figures reproduced from: Jiang, Zhao, and Lu. "Large Brain Model for Learning Generic Representations with Tremendous EEG Data in BCI." arXiv, 2024. [arXiv:QzTpTRVtrP](https://openreview.net/pdf?id=QzTpTRVtrP)*  
 
 ## Project Foundation:
 This project replicates and extends the work presented in the 2024 ICLR conference paper **"Large Brain Model for Learning Generic Representations with Tremendous EEG Data in BCI"** by Wei-Bang Jiang, Li-Ming Zhao, and Bao-Liang Lu at Shanghai Jiao Tong University and Shanghai Emotionhelper Technology Co., Ltd.
