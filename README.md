@@ -5,7 +5,7 @@ This project focuses on detecting and classifying seizures from EEG brain signal
 Seizures are often described as electrical storms in the brain. NeuroStorm reflects this analogy.
 
 ## How It Works
-- **Tokenizer** – NeuroStorm uses a **Variational Autoencoder (VAE)** to tokenize EEG signals. The VAE processes **Fast Fourier Transforms (FFT)** of EEG signal patches, generating compact representations of brain activity.
+- **Tokenizer** – NeuroStorm uses a **Variational Autoencoder (VAE)** to tokenize EEG signals. The VAE processes **Fast Fourier Transform (FFT)** spectra of EEG signal patches, generating compact representations of brain activity.
 - **Transformer Model** – These tokens are used to train a transformer, similar to those found in natural language processing, but adapted for neurodata.
 - **Classifier** – The transformer's output is passed to a classifier that identifies the type of seizure (if present).
 
