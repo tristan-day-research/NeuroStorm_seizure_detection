@@ -1,4 +1,4 @@
-**NeuroStorm** is a Large Brain Model (LaBraM), inspired by the architecture of Large Language Models (LLMs).
+**NeuroStorm** is a Large Brain Model (LaBraM, or LBM), inspired by the architecture of Large Language Models (LLM).
 This project focuses on detecting and classifying seizures from EEG brain signal recordings. This project aims to assist neurologists by automating the detection of anomalous neural activity, therby reducing manual workload and accelerating diagnosis.
 
 ## Why "NeuroStorm"?
