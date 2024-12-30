@@ -10,12 +10,15 @@ def configure_environment(environment='colab'):
         github_email = userdata.get('GITHUB_EMAIL')
         github_username = userdata.get('GITHUB_USER_NAME')
         project_id = userdata.get('GCP_EEG_PROJECT_ID')
-        bucket_name = userdata.get('GCP_EEG_BUCKET_NAME')
+        gcp_bucket_name = userdata.get('GCP_EEG_BUCKET_NAME')
+        gcp_file_prefix = userdata.get('EEG_GCP_FILEPATH')
 
         # Configure Git with credentials
         os.system(f'git config --global user.email "{github_email}"')
         os.system(f'git config --global user.name "{github_username}"')
         os.system(f'gcloud config set project {project_id}')
+
+        auth.authenticate_user()
         
         print(f"GCP Project Set")
         print("Git configured with your user data.")
