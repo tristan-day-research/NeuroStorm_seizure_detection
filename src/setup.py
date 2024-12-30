@@ -3,6 +3,15 @@ import torch
 from google.colab import auth
 
 def configure_environment(environment='colab'):
+
+
+    GCP_EEG_PROJECT_ID = userdata.get('GCP_EEG_PROJECT_ID')
+    BUCKET_NAME = os.getenv('GCP_EEG_BUCKET_NAME')
+
+    # Set Git configuration using Python variables
+    !git config --global user.email "{github_email}"
+    !git config --global user.name "{github_username}"
+
     if environment == 'colab':
         # Authenticate Google Cloud
         auth.authenticate_user()
@@ -24,9 +33,4 @@ def configure_environment(environment='colab'):
     # Install dependencies from requirements.txt
     os.system('pip install -r requirements.txt -q')
 
-    # Check GPU availability
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
-    os.system('nvidia-smi')
-
-    return device
+   
