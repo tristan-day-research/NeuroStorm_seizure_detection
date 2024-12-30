@@ -6,6 +6,7 @@ import io
 import h5py
 import time
 import google.cloud.storage
+import torch.nn as nn
 
 
 def contains_invalid_values(tensor):
