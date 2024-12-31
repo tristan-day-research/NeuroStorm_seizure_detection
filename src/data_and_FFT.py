@@ -1,11 +1,105 @@
 import io
+import gc
 import matplotlib.pyplot as plt
 import torch
 import pandas as pd
 import pyarrow.parquet as pq
 from google.cloud import storage
+import torch
 from torch.utils.data import Dataset
 from torch.fft import rfft
+
+import google.resumable_media.common
+import logging
+import time
+
+# def preprocess_eeg(patches, fft_size, apply_dc_offset_removal=True, apply_window=True, window_type='hann', normalize=True):
+#     """
+#     Preprocess EEG data patches by removing DC offset, applying windowing, and normalizing FFT output.
+
+#     Args:
+#         patches (torch.Tensor): EEG patches of shape (batch, channels, time).
+#         fft_size (int): Size of the FFT to apply.
+#         apply_dc_offset_removal (bool): Whether to remove the DC offset.
+#         apply_window (bool): Whether to apply a windowing function.
+#         window_type (str): Type of window to apply ('hann', 'hamming', 'blackman').
+#         normalize (bool): Whether to normalize the FFT output.
+
+#     Returns:
+#         torch.Tensor: Preprocessed FFT magnitude of shape (batch, channels, freq_bins).
+#     """
+
+#     print("preprocessing data")
+
+#     # 1. Remove DC Offset
+#     if apply_dc_offset_removal:
+#         patches = patches - patches.mean(dim=-1, keepdim=True)
+    
+#     # 2. Apply Windowing
+#     if apply_window:
+#         if window_type == 'hann':
+#             window = torch.hann_window(patches.shape[-1], device=patches.device)
+#         elif window_type == 'hamming':
+#             window = torch.hamming_window(patches.shape[-1], device=patches.device)
+#         elif window_type == 'blackman':
+#             window = torch.blackman_window(patches.shape[-1], device=patches.device)
+#         else:
+#             raise ValueError(f"Unsupported window type: {window_type}")
+        
+#         patches = patches * window
+    
+#     # 3. Perform FFT
+#     fft_result = torch.fft.rfft(patches, n=fft_size, dim=-1)
+#     fft_magnitude = torch.abs(fft_result)
+
+#     # 4. Normalize FFT
+#     if normalize:
+#         fft_magnitude = fft_magnitude / fft_size
+    
+#         # Optionally apply Z-score normalization
+#         mean = fft_magnitude.mean(dim=(0, 1), keepdim=True)
+#         std = fft_magnitude.std(dim=(0, 1), keepdim=True)
+#         fft_magnitude = (fft_magnitude - mean) / (std + 1e-8)
+    
+#     return fft_magnitude
+
+
+def preprocess_eeg(patches, fft_size, apply_dc_offset_removal=True, apply_window=True, window_type='hann', normalize=True):
+    # 1. DC Offset Removal
+    if apply_dc_offset_removal:
+        patches = patches - patches.mean(dim=-1, keepdim=True)
+
+    # 2. Apply Windowing
+    if apply_window:
+        if window_type == 'hann':
+            window = torch.hann_window(patches.shape[-1], device=patches.device)
+        elif window_type == 'hamming':
+            window = torch.hamming_window(patches.shape[-1], device=patches.device)
+        else:
+            raise ValueError(f"Unsupported window type: {window_type}")
+        
+        patches = patches * window
+        del window  # Free memory immediately after use
+        torch.cuda.empty_cache()  # Clear unused GPU memory
+
+    # 3. Perform FFT
+    fft_result = torch.fft.rfft(patches, n=fft_size, dim=-1)
+    fft_magnitude = torch.abs(fft_result)
+    del fft_result  # Free FFT tensor
+
+    # 4. Normalize FFT
+    if normalize:
+        fft_magnitude = fft_magnitude / fft_size
+        mean = fft_magnitude.mean(dim=(0, 1), keepdim=True)
+        std = fft_magnitude.std(dim=(0, 1), keepdim=True)
+        fft_magnitude = (fft_magnitude - mean) / (std + 1e-8)
+        del mean, std  # Free normalization tensors
+
+    # Clear Python's garbage collection
+    gc.collect()
+    torch.cuda.empty_cache()
+
+    return fft_magnitude
 
 def normalize_fft(fft_data, method='zscore', epsilon=1e-8):
     """
@@ -47,64 +141,69 @@ def normalize_fft(fft_data, method='zscore', epsilon=1e-8):
 
 
 def pad_tensor_with_nan_check(tensor, max_length, max_invalid_ratio=0.3):
-    # Calculate invalid ratio (NaN or Inf)
     invalid_mask = torch.isnan(tensor) | torch.isinf(tensor)
     invalid_ratio = invalid_mask.sum().item() / tensor.numel()
 
-    # Skip the patch if invalid ratio exceeds threshold
-    if invalid_ratio > max_invalid_ratio:
-        print(f"[INFO] Skipping patch - {invalid_ratio:.2%} NaN/Inf")
-        return None  # Mark for removal
-
-    # Create mask for current tensor size (before padding)
+    # Mask for valid entries
     valid_mask = ~invalid_mask
 
-    # Pad the tensor to max length if needed
+    if invalid_ratio > max_invalid_ratio:
+        print(f"[INFO] Zero-padding patch with {invalid_ratio:.2%} NaN/Inf")
+        tensor[invalid_mask] = 0  # Zero out NaNs/Infs instead of skipping
+    else:
+        tensor[invalid_mask] = 0  # Regular zero padding
+
     pad_size = max_length - tensor.shape[0]
     if pad_size > 0:
-        # Pad the tensor
+        # Zero pad the tensor to ensure uniform shape
         padding = torch.zeros((pad_size, *tensor.shape[1:]), device=tensor.device)
         tensor = torch.cat((tensor, padding), dim=0)
         
-        # Pad the mask (expanding along the first dimension)
+        # Pad the mask to track the valid regions
         mask_padding = torch.zeros((pad_size, *valid_mask.shape[1:]), device=tensor.device, dtype=torch.bool)
         valid_mask = torch.cat((valid_mask, mask_padding), dim=0)
 
-    # Apply the mask (replace NaN/Inf values)
-    tensor[~valid_mask] = 0
-
-    return tensor
+    return tensor, valid_mask
 
 
 def custom_collate(batch):
     batch = [item for item in batch if item is not None]
     if len(batch) == 0:
-        print("[WARNING] Entire batch skipped due to invalid patches.")
-        return None  # Skip entire batch if all patches are invalid
-
-    eeg_patches, fft_data, mask = zip(*batch)
-
-    # Pad tensors to the same length
-    max_patches = max(tensor.shape[0] for tensor in eeg_patches)
-
-    eeg_patches = [pad_tensor_with_nan_check(t, max_patches) for t in eeg_patches]
-    fft_data = [pad_tensor_with_nan_check(t, max_patches) for t in fft_data]
-    mask = [pad_tensor_with_nan_check(t, max_patches) for t in mask]
-
-    # Remove any None values after padding
-    valid_entries = [(p, f, m) for p, f, m in zip(eeg_patches, fft_data, mask) if p is not None]
-
-    if len(valid_entries) == 0:
-        print("[WARNING] Batch fully invalid after padding. Skipping...")
         return None
+        
+    # Unpack the batch correctly - each item is already a tuple
+    eeg_patches, fft_data, mask = [], [], []
 
-    eeg_patches, fft_data, mask = zip(*valid_entries)
+    
+    for item in batch:
+        e, f, m = item
 
-    eeg_patches = torch.stack(eeg_patches)
-    fft_data = torch.stack(fft_data)
-    mask = torch.stack(mask)
+        eeg_patches.append(e)
+        fft_data.append(f)
+        mask.append(m)
 
-    return eeg_patches, fft_data, mask
+
+    # for item in batch:
+    #     e, f, m = item
+    #     eeg_patches.append(e)
+    #     fft_data.append(f)
+    #     mask.append(m)
+
+    max_patches = max(tensor.shape[0] for tensor in eeg_patches)
+    
+    # Rest of your padding and stacking logic
+    eeg_results = [pad_tensor_with_nan_check(t, max_patches) for t in eeg_patches]
+    fft_results = [pad_tensor_with_nan_check(t, max_patches) for t in fft_data]
+    mask_results = [pad_tensor_with_nan_check(t, max_patches) for t in mask]
+    
+    eeg_patches, eeg_mask = zip(*eeg_results)
+    fft_data, fft_mask = zip(*fft_results)
+    mask, mask_pad = zip(*mask_results)
+    
+    return (torch.stack(eeg_patches), 
+            torch.stack(fft_data),
+            torch.stack(mask),
+            torch.stack(eeg_mask))
 
 
 class EEGDataset(Dataset):
@@ -125,25 +224,98 @@ class EEGDataset(Dataset):
     def __len__(self):
         return len(self.file_names)
 
-    def __getitem__(self, idx):
-        # Load parquet file from GCS
-        blob = self.files[idx]
-        byte_stream = io.BytesIO()
-        blob.download_to_file(byte_stream)
-        byte_stream.seek(0)
+    # def __getitem__(self, idx):
+    #     # Load parquet file from GCS
+    #     blob = self.files[idx]
+    #     byte_stream = io.BytesIO()
+    #     blob.download_to_file(byte_stream)
+    #     byte_stream.seek(0)
 
-        # Read parquet file
-        eeg_data = pq.read_table(byte_stream).to_pandas()
-        eeg_tensor = torch.tensor(eeg_data.values, dtype=torch.float32)  # Shape: (time, channels)
+    #     # Read parquet file
+    #     eeg_data = pq.read_table(byte_stream).to_pandas()
+    #     eeg_tensor = torch.tensor(eeg_data.values, dtype=torch.float32)  # Shape: (time, channels)
 
-        # Segment EEG into patches
-        patches, mask = self._segment_into_patches(eeg_tensor)
+    #     # Segment EEG into patches
+    #     patches, mask = self._segment_into_patches(eeg_tensor)
         
-        # Perform FFT on each patch
-        fft_data = self._apply_fft(patches)
+    #     # Perform FFT on each patch
+    #     fft_data = self._apply_fft(patches)
 
-        # Return both raw EEG patches and FFT data
-        return patches, fft_data, mask
+    #     # Return both raw EEG patches and FFT data
+    #     return patches, fft_data, mask
+
+    # def __getitem__(self, idx):
+    #     # Load parquet file from GCS
+    #     blob = self.files[idx]
+    #     byte_stream = io.BytesIO()
+    #     blob.download_to_file(byte_stream)
+    #     byte_stream.seek(0)
+
+    #     # Read parquet file
+    #     eeg_data = pq.read_table(byte_stream).to_pandas()
+    #     eeg_tensor = torch.tensor(eeg_data.values, dtype=torch.float32)  # Shape: (time, channels)
+
+    #     # Segment EEG into patches
+    #     patches, mask = self._segment_into_patches(eeg_tensor)
+        
+    #     # Apply Preprocessing (DC offset removal, windowing, normalization)
+    #     fft_data = preprocess_eeg(
+    #         patches=patches,
+    #         fft_size=self.fft_size,  # Use the fft_size from the dataset instance
+    #         apply_dc_offset_removal=True,
+    #         apply_window=True,
+    #         window_type='hann',
+    #         normalize=True
+    #     )
+
+    #     # Return preprocessed FFT data along with the raw patches and mask
+    #     return patches, fft_data, mask
+
+
+
+    def __getitem__(self, idx):
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                # Load parquet file from GCS
+                blob = self.files[idx]
+                byte_stream = io.BytesIO()
+                blob.download_to_file(byte_stream)
+                byte_stream.seek(0)
+
+                # Read parquet file
+                eeg_data = pq.read_table(byte_stream).to_pandas()
+                eeg_tensor = torch.tensor(eeg_data.values, dtype=torch.float32)  # Shape: (time, channels)
+
+                # Segment EEG into patches
+                patches, mask = self._segment_into_patches(eeg_tensor)
+                
+                # Apply Preprocessing
+                fft_data = preprocess_eeg(
+                    patches=patches,
+                    fft_size=self.fft_size,
+                    apply_dc_offset_removal=True,
+                    apply_window=True,
+                    window_type='hann',
+                    normalize=True
+                )
+
+                # Return preprocessed FFT data along with the raw patches and mask
+                return patches, fft_data, mask
+            
+            except google.resumable_media.common.DataCorruption as e:
+                logging.warning(f"[Warning] Data corruption detected in file: {self.files[idx].name}. Attempt {attempt + 1}")
+                time.sleep(2 ** attempt)  # Exponential back-off
+
+            except Exception as e:
+                logging.error(f"[Error] Failed to process file: {self.files[idx].name}. Error: {e}")
+                return None
+
+        # If all retries fail, skip the sample
+        logging.error(f"[Error] Skipping corrupted file after {max_retries} attempts: {self.files[idx].name}")
+        return None
+
+
 
     def _segment_into_patches(self, eeg_tensor):
         t, c = eeg_tensor.shape
