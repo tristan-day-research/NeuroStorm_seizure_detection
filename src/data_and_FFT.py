@@ -12,64 +12,132 @@ from torch.fft import rfft
 import google.resumable_media.common
 import logging
 import time
+from scipy.signal import butter, filtfilt
 
-# def preprocess_eeg(patches, fft_size, apply_dc_offset_removal=True, apply_window=True, window_type='hann', normalize=True):
+def bandpass_filter(data, lowcut=0.1, highcut=75, fs=200, order=4):
+    """
+    Apply bandpass filter to EEG data.
+    Args:
+        data (torch.Tensor): EEG signal of shape (batch, channels, time).
+        lowcut (float): Lower bound of the filter.
+        highcut (float): Upper bound of the filter.
+        fs (int): Sampling frequency (Hz).
+        order (int): Filter order.
+    Returns:
+        torch.Tensor: Filtered EEG data.
+    """
+    b, a = butter(order, [lowcut / (fs / 2), highcut / (fs / 2)], btype='band')
+    filtered_data = torch.tensor(filtfilt(b, a, data.cpu().numpy(), axis=-1), device=data.device)
+    return filtered_data
+
+
+# def preprocess_eeg(patches, fft_size, apply_dc_offset_removal=True,
+#                    apply_window=True, window_type='hann', normalize_eeg=True, normalize_fft=False,
+#                    apply_bandpass=True, fs=200, lowcut=0.1, highcut=75):
 #     """
-#     Preprocess EEG data patches by removing DC offset, applying windowing, and normalizing FFT output.
-
+#     Preprocess EEG patches by applying DC offset removal, windowing, bandpass filtering, and FFT normalization.
 #     Args:
-#         patches (torch.Tensor): EEG patches of shape (batch, channels, time).
-#         fft_size (int): Size of the FFT to apply.
-#         apply_dc_offset_removal (bool): Whether to remove the DC offset.
+#         patches (torch.Tensor): EEG patches (batch, channels, time).
+#         fft_size (int): FFT size.
+#         apply_dc_offset_removal (bool): Whether to remove DC offset.
 #         apply_window (bool): Whether to apply a windowing function.
-#         window_type (str): Type of window to apply ('hann', 'hamming', 'blackman').
-#         normalize (bool): Whether to normalize the FFT output.
-
+#         window_type (str): Type of window ('hann', 'hamming').
+#         normalize (bool): Whether to normalize patches.
+#         apply_bandpass (bool): Apply bandpass filter to EEG.
+#         fs (int): Sampling frequency (Hz).
+#         lowcut (float): Low cut-off frequency for bandpass.
+#         highcut (float): High cut-off frequency for bandpass.
 #     Returns:
-#         torch.Tensor: Preprocessed FFT magnitude of shape (batch, channels, freq_bins).
+#         torch.Tensor: Preprocessed FFT magnitude.
 #     """
 
-#     print("preprocessing data")
+
+#     print("preprocessing")
 
 #     # 1. Remove DC Offset
 #     if apply_dc_offset_removal:
 #         patches = patches - patches.mean(dim=-1, keepdim=True)
-    
-#     # 2. Apply Windowing
+
+#     # 2. Apply Bandpass Filtering
+#     if apply_bandpass:
+#         patches = bandpass_filter(patches, lowcut, highcut, fs)
+
+#     # 3. Normalize EEG Patches
+#     if normalize_eeg:
+#         print("normalizing EEG")
+#         mean = patches.mean(dim=-1, keepdim=True)
+#         std = patches.std(dim=-1, keepdim=True)
+#         patches = (patches - mean) / (std + 1e-8)
+
+#     # 4. Apply Windowing
 #     if apply_window:
 #         if window_type == 'hann':
 #             window = torch.hann_window(patches.shape[-1], device=patches.device)
 #         elif window_type == 'hamming':
 #             window = torch.hamming_window(patches.shape[-1], device=patches.device)
-#         elif window_type == 'blackman':
-#             window = torch.blackman_window(patches.shape[-1], device=patches.device)
 #         else:
 #             raise ValueError(f"Unsupported window type: {window_type}")
-        
 #         patches = patches * window
-    
-#     # 3. Perform FFT
+
+#     # 5. Perform FFT
 #     fft_result = torch.fft.rfft(patches, n=fft_size, dim=-1)
 #     fft_magnitude = torch.abs(fft_result)
 
-#     # 4. Normalize FFT
-#     if normalize:
+#     # 6. Normalize FFT Magnitude
+#     if normalize_fft:
 #         fft_magnitude = fft_magnitude / fft_size
-    
-#         # Optionally apply Z-score normalization
 #         mean = fft_magnitude.mean(dim=(0, 1), keepdim=True)
 #         std = fft_magnitude.std(dim=(0, 1), keepdim=True)
 #         fft_magnitude = (fft_magnitude - mean) / (std + 1e-8)
-    
+
 #     return fft_magnitude
 
+def preprocess_eeg(patches, fft_size, apply_dc_offset_removal=True,
+                   apply_window=True, window_type='hann', normalize_eeg=True, normalization_type='zscore',
+                   normalize_fft=False, apply_bandpass=True, fs=200, lowcut=0.1, highcut=75):
+    """
+    Preprocess EEG patches by applying DC offset removal, windowing, bandpass filtering, and FFT normalization.
+    Args:
+        patches (torch.Tensor): EEG patches (batch, channels, time).
+        fft_size (int): FFT size.
+        apply_dc_offset_removal (bool): Whether to remove DC offset.
+        apply_window (bool): Whether to apply a windowing function.
+        window_type (str): Type of window ('hann', 'hamming').
+        normalize_eeg (bool): Whether to normalize EEG patches.
+        normalization_type (str): 'zscore' or 'minmax' for EEG normalization.
+        apply_bandpass (bool): Apply bandpass filter to EEG.
+        fs (int): Sampling frequency (Hz).
+        lowcut (float): Low cut-off frequency for bandpass.
+        highcut (float): High cut-off frequency for bandpass.
+    Returns:
+        torch.Tensor: Preprocessed FFT magnitude and normalized EEG patches.
+    """
 
-def preprocess_eeg(patches, fft_size, apply_dc_offset_removal=True, apply_window=True, window_type='hann', normalize=True):
-    # 1. DC Offset Removal
+    print("preprocessing")
+
+    # 1. Remove DC Offset
     if apply_dc_offset_removal:
         patches = patches - patches.mean(dim=-1, keepdim=True)
 
-    # 2. Apply Windowing
+    # 2. Apply Bandpass Filtering
+    if apply_bandpass:
+        patches = bandpass_filter(patches, lowcut, highcut, fs)
+
+    # 3. Normalize EEG Patches
+    if normalize_eeg:
+        print("normalizing EEG")
+        if normalization_type == 'zscore':
+            mean = patches.mean(dim=-1, keepdim=True)
+            std = patches.std(dim=-1, keepdim=True)
+            patches = (patches - mean) / (std + 1e-8)
+        elif normalization_type == 'minmax':
+            min_val = patches.min(dim=-1, keepdim=True).values
+            max_val = patches.max(dim=-1, keepdim=True).values
+            patches = 2 * ((patches - min_val) / (max_val - min_val + 1e-8)) - 1  # Scale to [-1, 1]
+        else:
+            raise ValueError(f"Unsupported normalization type: {normalization_type}")
+
+    # 4. Apply Windowing
     if apply_window:
         if window_type == 'hann':
             window = torch.hann_window(patches.shape[-1], device=patches.device)
@@ -77,67 +145,60 @@ def preprocess_eeg(patches, fft_size, apply_dc_offset_removal=True, apply_window
             window = torch.hamming_window(patches.shape[-1], device=patches.device)
         else:
             raise ValueError(f"Unsupported window type: {window_type}")
-        
         patches = patches * window
-        del window  # Free memory immediately after use
-        torch.cuda.empty_cache()  # Clear unused GPU memory
 
-    # 3. Perform FFT
+    # 5. Perform FFT
     fft_result = torch.fft.rfft(patches, n=fft_size, dim=-1)
     fft_magnitude = torch.abs(fft_result)
-    del fft_result  # Free FFT tensor
 
-    # 4. Normalize FFT
-    if normalize:
+    # 6. Normalize FFT Magnitude
+    if normalize_fft:
         fft_magnitude = fft_magnitude / fft_size
         mean = fft_magnitude.mean(dim=(0, 1), keepdim=True)
         std = fft_magnitude.std(dim=(0, 1), keepdim=True)
         fft_magnitude = (fft_magnitude - mean) / (std + 1e-8)
-        del mean, std  # Free normalization tensors
 
-    # Clear Python's garbage collection
-    gc.collect()
-    torch.cuda.empty_cache()
+    return fft_magnitude, patches  # Return both FFT and normalized EEG
 
-    return fft_magnitude
 
-def normalize_fft(fft_data, method='zscore', epsilon=1e-8):
-    """
-    Normalize FFT data.
 
-    Args:
-        fft_data (torch.Tensor): FFT data of shape (batch, time, channels).
-        method (str): Normalization method ('zscore', 'minmax', 'log').
-        epsilon (float): Small value to avoid division by zero.
+# def normalize_fft(fft_data, method='zscore', epsilon=1e-8):
+#     """
+#     Normalize FFT data.
 
-    Returns:
-        torch.Tensor: Normalized FFT data.
-    """
-    if method == 'zscore':
-        # Z-score normalization (mean 0, std 1)
-        mean = fft_data.mean(dim=(0, 1), keepdim=True)
-        std = fft_data.std(dim=(0, 1), keepdim=True)
-        normalized_fft = (fft_data - mean) / (std + epsilon)
+#     Args:
+#         fft_data (torch.Tensor): FFT data of shape (batch, time, channels).
+#         method (str): Normalization method ('zscore', 'minmax', 'log').
+#         epsilon (float): Small value to avoid division by zero.
 
-    elif method == 'minmax':
-        # Min-Max scaling to [0, 1]
-        min_val = fft_data.min(dim=(0, 1), keepdim=True).values
-        max_val = fft_data.max(dim=(0, 1), keepdim=True).values
-        normalized_fft = (fft_data - min_val) / (max_val - min_val + epsilon)
+#     Returns:
+#         torch.Tensor: Normalized FFT data.
+#     """
+#     if method == 'zscore':
+#         # Z-score normalization (mean 0, std 1)
+#         mean = fft_data.mean(dim=(0, 1), keepdim=True)
+#         std = fft_data.std(dim=(0, 1), keepdim=True)
+#         normalized_fft = (fft_data - mean) / (std + epsilon)
 
-    elif method == 'log':
-        # Logarithmic scaling (compress large values)
-        normalized_fft = torch.log1p(fft_data)
+#     elif method == 'minmax':
+#         # Min-Max scaling to [0, 1]
+#         min_val = fft_data.min(dim=(0, 1), keepdim=True).values
+#         max_val = fft_data.max(dim=(0, 1), keepdim=True).values
+#         normalized_fft = (fft_data - min_val) / (max_val - min_val + epsilon)
 
-        # Optional Z-score after log
-        mean = normalized_fft.mean(dim=(0, 1), keepdim=True)
-        std = normalized_fft.std(dim=(0, 1), keepdim=True)
-        normalized_fft = (normalized_fft - mean) / (std + epsilon)
+#     elif method == 'log':
+#         # Logarithmic scaling (compress large values)
+#         normalized_fft = torch.log1p(fft_data)
 
-    else:
-        raise ValueError(f"Unsupported normalization method: {method}")
+#         # Optional Z-score after log
+#         mean = normalized_fft.mean(dim=(0, 1), keepdim=True)
+#         std = normalized_fft.std(dim=(0, 1), keepdim=True)
+#         normalized_fft = (normalized_fft - mean) / (std + epsilon)
 
-    return normalized_fft
+#     else:
+#         raise ValueError(f"Unsupported normalization method: {method}")
+
+#     return normalized_fft
 
 
 def pad_tensor_with_nan_check(tensor, max_length, max_invalid_ratio=0.3):
@@ -287,21 +348,39 @@ class EEGDataset(Dataset):
                 eeg_data = pq.read_table(byte_stream).to_pandas()
                 eeg_tensor = torch.tensor(eeg_data.values, dtype=torch.float32)  # Shape: (time, channels)
 
+                # Apply Bandpass Filter to Full EEG Signal (Before Segmenting)
+                # eeg_tensor = bandpass_filter(eeg_tensor, lowcut=0.1, highcut=75, fs=200)
+
                 # Segment EEG into patches
                 patches, mask = self._segment_into_patches(eeg_tensor)
                 
-                # Apply Preprocessing
-                fft_data = preprocess_eeg(
+                # # Apply Preprocessing
+                # fft_data = preprocess_eeg(
+                #     patches=patches,
+                #     fft_size=self.fft_size,
+                #     apply_dc_offset_removal=False,
+                #     apply_window=False,
+                #     window_type='hann',
+                #     normalize=False
+                # )
+
+                # Apply Preprocessing (Normalization + Bandpass + FFT)
+                fft_data, normalized_patches = preprocess_eeg(
                     patches=patches,
                     fft_size=self.fft_size,
-                    apply_dc_offset_removal=True,
-                    apply_window=True,
+                    apply_dc_offset_removal=False,
+                    apply_window=False,
                     window_type='hann',
-                    normalize=True
+                    normalize_eeg=True,
+                    normalization_type='minmax',  # Use min-max to scale to [-1, 1]
+                    normalize_fft=False,
+                    apply_bandpass=False,
+                    fs=200,
+                    lowcut=0.1,
+                    highcut=75
                 )
-
                 # Return preprocessed FFT data along with the raw patches and mask
-                return patches, fft_data, mask
+                return normalized_patches, fft_data, mask
             
             except google.resumable_media.common.DataCorruption as e:
                 logging.warning(f"[Warning] Data corruption detected in file: {self.files[idx].name}. Attempt {attempt + 1}")
@@ -314,8 +393,6 @@ class EEGDataset(Dataset):
         # If all retries fail, skip the sample
         logging.error(f"[Error] Skipping corrupted file after {max_retries} attempts: {self.files[idx].name}")
         return None
-
-
 
     def _segment_into_patches(self, eeg_tensor):
         t, c = eeg_tensor.shape
