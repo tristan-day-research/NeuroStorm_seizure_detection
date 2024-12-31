@@ -371,7 +371,7 @@ class EEGDataset(Dataset):
                     apply_dc_offset_removal=False,
                     apply_window=False,
                     window_type='hann',
-                    normalize_eeg=True,
+                    normalize_eeg=False,
                     normalization_type='minmax',  # Use min-max to scale to [-1, 1]
                     normalize_fft=False,
                     apply_bandpass=False,
