@@ -26,7 +26,7 @@ def configure_environment(environment='colab'):
     else:
         print("Running in local environment. Ensure .env is configured.")
 
-    return gcp_bucket_name
+    return gcp_bucket_name, gcp_file_prefix, project_id
 
 
    

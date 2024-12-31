@@ -7,6 +7,105 @@ from google.cloud import storage
 from torch.utils.data import Dataset
 from torch.fft import rfft
 
+def normalize_fft(fft_data, method='zscore', epsilon=1e-8):
+    """
+    Normalize FFT data.
+
+    Args:
+        fft_data (torch.Tensor): FFT data of shape (batch, time, channels).
+        method (str): Normalization method ('zscore', 'minmax', 'log').
+        epsilon (float): Small value to avoid division by zero.
+
+    Returns:
+        torch.Tensor: Normalized FFT data.
+    """
+    if method == 'zscore':
+        # Z-score normalization (mean 0, std 1)
+        mean = fft_data.mean(dim=(0, 1), keepdim=True)
+        std = fft_data.std(dim=(0, 1), keepdim=True)
+        normalized_fft = (fft_data - mean) / (std + epsilon)
+
+    elif method == 'minmax':
+        # Min-Max scaling to [0, 1]
+        min_val = fft_data.min(dim=(0, 1), keepdim=True).values
+        max_val = fft_data.max(dim=(0, 1), keepdim=True).values
+        normalized_fft = (fft_data - min_val) / (max_val - min_val + epsilon)
+
+    elif method == 'log':
+        # Logarithmic scaling (compress large values)
+        normalized_fft = torch.log1p(fft_data)
+
+        # Optional Z-score after log
+        mean = normalized_fft.mean(dim=(0, 1), keepdim=True)
+        std = normalized_fft.std(dim=(0, 1), keepdim=True)
+        normalized_fft = (normalized_fft - mean) / (std + epsilon)
+
+    else:
+        raise ValueError(f"Unsupported normalization method: {method}")
+
+    return normalized_fft
+
+
+def pad_tensor_with_nan_check(tensor, max_length, max_invalid_ratio=0.3):
+    # Calculate invalid ratio (NaN or Inf)
+    invalid_mask = torch.isnan(tensor) | torch.isinf(tensor)
+    invalid_ratio = invalid_mask.sum().item() / tensor.numel()
+
+    # Skip the patch if invalid ratio exceeds threshold
+    if invalid_ratio > max_invalid_ratio:
+        print(f"[INFO] Skipping patch - {invalid_ratio:.2%} NaN/Inf")
+        return None  # Mark for removal
+
+    # Create mask for current tensor size (before padding)
+    valid_mask = ~invalid_mask
+
+    # Pad the tensor to max length if needed
+    pad_size = max_length - tensor.shape[0]
+    if pad_size > 0:
+        # Pad the tensor
+        padding = torch.zeros((pad_size, *tensor.shape[1:]), device=tensor.device)
+        tensor = torch.cat((tensor, padding), dim=0)
+        
+        # Pad the mask (expanding along the first dimension)
+        mask_padding = torch.zeros((pad_size, *valid_mask.shape[1:]), device=tensor.device, dtype=torch.bool)
+        valid_mask = torch.cat((valid_mask, mask_padding), dim=0)
+
+    # Apply the mask (replace NaN/Inf values)
+    tensor[~valid_mask] = 0
+
+    return tensor
+
+
+def custom_collate(batch):
+    batch = [item for item in batch if item is not None]
+    if len(batch) == 0:
+        print("[WARNING] Entire batch skipped due to invalid patches.")
+        return None  # Skip entire batch if all patches are invalid
+
+    eeg_patches, fft_data, mask = zip(*batch)
+
+    # Pad tensors to the same length
+    max_patches = max(tensor.shape[0] for tensor in eeg_patches)
+
+    eeg_patches = [pad_tensor_with_nan_check(t, max_patches) for t in eeg_patches]
+    fft_data = [pad_tensor_with_nan_check(t, max_patches) for t in fft_data]
+    mask = [pad_tensor_with_nan_check(t, max_patches) for t in mask]
+
+    # Remove any None values after padding
+    valid_entries = [(p, f, m) for p, f, m in zip(eeg_patches, fft_data, mask) if p is not None]
+
+    if len(valid_entries) == 0:
+        print("[WARNING] Batch fully invalid after padding. Skipping...")
+        return None
+
+    eeg_patches, fft_data, mask = zip(*valid_entries)
+
+    eeg_patches = torch.stack(eeg_patches)
+    fft_data = torch.stack(fft_data)
+    mask = torch.stack(mask)
+
+    return eeg_patches, fft_data, mask
+
 
 class EEGDataset(Dataset):
     def __init__(self, bucket_name, gcp_file_path, patch_size, overlap, fft_size, stride=None):
