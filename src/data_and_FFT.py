@@ -1,8 +1,7 @@
 import io
+import matplotlib.pyplot as plt
 import torch
 import pandas as pd
-import matplotlib.pyplot as plt
-from matplotlib import colors
 import pyarrow.parquet as pq
 from google.cloud import storage
 from torch.utils.data import Dataset
@@ -44,7 +43,8 @@ class EEGDataset(Dataset):
         # Perform FFT on each patch
         fft_data = self._apply_fft(patches)
 
-        return fft_data, mask
+        # Return both raw EEG patches and FFT data
+        return patches, fft_data, mask
 
     def _segment_into_patches(self, eeg_tensor):
         t, c = eeg_tensor.shape
@@ -69,26 +69,32 @@ class EEGDataset(Dataset):
         return batch_patches, batch_masks
 
     def _apply_fft(self, patches):
+        # Apply FFT along the time dimension (dim=1)
         fft_result = rfft(patches, n=self.fft_size, dim=1)
         return torch.abs(fft_result)  # Return magnitude spectrum
 
-# Visualization Function (Separate from Data Loader)
-def visualize_eeg_and_fft(eeg_tensor, fft_tensor, fft_size, sample_idx=0):
-    raw_signal = eeg_tensor[sample_idx, :, 0].cpu().numpy()  # [patch_size]
-    fft_signal = fft_tensor[sample_idx, :, 0].cpu().numpy()  # [fft_size // 2 + 1]
 
-    plt.figure(figsize=(12, 6))
-    plt.subplot(1, 2, 1)
+
+# Visualize Raw EEG (Time Domain)
+def visualize_eeg(eeg_tensor, sample_idx=0, channel=0):
+    raw_signal = eeg_tensor[sample_idx, :, channel].cpu().numpy()  # Select channel
+    plt.figure(figsize=(10, 4))
     plt.plot(raw_signal)
-    plt.title("Raw EEG Signal (Time Domain)")
-    plt.xlabel("Time")
+    plt.title(f"EEG Signal (Channel {channel}) - Time Domain")
+    plt.xlabel("Time (samples)")
     plt.ylabel("Amplitude")
+    plt.grid(True)
+    plt.show()
 
-    plt.subplot(1, 2, 2)
-    plt.plot(fft_signal)
-    plt.title("FFT of EEG Signal (Frequency Domain)")
-    plt.xlabel("Frequency Bin")
+
+# Visualize FFT (Frequency Domain)
+def visualize_fft(fft_tensor, fft_size, sample_idx=0, channel=0):
+    fft_signal = fft_tensor[sample_idx, :, channel].cpu().numpy()
+    freqs = torch.linspace(0, fft_size // 2, fft_signal.shape[0])  # Frequency bins
+    plt.figure(figsize=(10, 4))
+    plt.plot(freqs, fft_signal)
+    plt.title(f"FFT of EEG Signal (Channel {channel}) - Frequency Domain")
+    plt.xlabel("Frequency (Hz or Bins)")
     plt.ylabel("Magnitude")
-
-    plt.tight_layout()
+    plt.grid(True)
     plt.show()
